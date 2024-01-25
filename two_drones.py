@@ -50,7 +50,14 @@ for i in range(num_drones):
 step2 
     find the colliding time points
 """
-timer_map = planner.get_timer_map(prim_trajs, T, corridor_r*3, spy=1)
+timer_map = planner.get_timer_map(prim_trajs, T, corridor_r*3, method=1, spy=0)
+
+
+"""
+step3
+    modify timeline based on priority
+"""
+
 
 """
 plot trajectories

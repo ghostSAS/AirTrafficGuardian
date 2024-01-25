@@ -50,23 +50,25 @@ class Planner():
     def get_timer_map(self, trajs, T, collide_r, method=1, spy=1):
         N = len(trajs[0])
         t_span = np.linspace(0,T,N)
-        timer_map = np.empty((N,N))
+        timer_map = np.zeros((N,N))
         
-        # method
-        #   0: brute force
-        #   1: bezier difference
-        method = 0
-        if method == 0:
-            assert(len(trajs)==2)
+
+        assert(len(trajs)==2)
+        if method == 0:     # brute force 1: O(N^2)
             for i in range(N):
                 for j in range(N):
                     if np.linalg.norm(trajs[0][i]-trajs[1][j])<=collide_r:
                         timer_map[i,j] = 1
-                    else:
-                        timer_map[i,j] = 0
-        elif method == 1:
-            1 == 1
-        
+
+        elif method == 1:   # brute force 2: O(N), worst O(N^2)
+            for offset in range(10):
+                
+                dis = np.linalg.norm(trajs[0]-trajs[1], axis=1)
+                idx = np.where(dis<collide_r)[0]
+                print(idx)
+
+
+
         if spy:
             fig = plt.figure()
             ax = fig.add_subplot(111)
