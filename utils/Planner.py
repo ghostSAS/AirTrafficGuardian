@@ -47,7 +47,7 @@ class Planner():
         return 0
     
     @timer
-    def get_timer_map(self, trajs, T, collide_r, method=1, spy=1):
+    def get_timer_map(self, trajs, T, collide_r, method=0, spy=1):
         N = len(trajs[0])
         t_span = np.linspace(0,T,N)
         timer_map = np.zeros((N,N))
@@ -80,6 +80,13 @@ class Planner():
             plt.show()
         return timer_map
     
+
+    def update_timer_map(self, timer_map):
+        # TODO: impliment using optimization
+        pt = [40, 12]
+
+
+
     
     def plot_final_frame(self, trajs, starts, targets, corridors, corridor_r, view_angle):
         fig = plt.figure()
@@ -122,6 +129,10 @@ class Planner():
             return lines, objs
 
         def ini_plot():
+            for i in range(len(trajs)):
+                curve = trajs[i]
+                ax.plot(curve[:,0], curve[:,1], curve[:,2], c=cm[colors[i]], lw=1, linestyle = "--")
+
             for i in range(len(lines)):
                 lines[i].set_data(np.empty([1]), np.empty([1]))
                 lines[i].set_3d_properties(np.empty([1]))
@@ -129,16 +140,17 @@ class Planner():
                 objs[i].set_3d_properties(np.empty([1]))
 
         fig, ax = self.plot_final_frame(trajs, starts, targets, corridors, corridor_r, view_angle)
-        [ax.lines.pop(0) for _ in ax.lines]
+        [ax.lines.pop(0) for _ in range(len(ax.lines))]
+
         cm, colors = self.cm, self.colors
         
         t_all = np.linspace(0,T,len(trajs[0]))
         lines = [ax.plot([], [], [], lw=2, label=f"Drone {i+1}", color=cm[colors[i]])[0] for i in range(len(trajs))]
         objs = [ax.plot([], [], [], c=cm[colors[i]], lw=5, marker='o',linestyle="")[0] for i in range(len(trajs))]
-        titleTime = ax.text2D(0.05, 0.95, "", transform=ax.transAxes)
+        titleTime = ax.text2D(0.1, 0.95, "", transform=ax.transAxes)
                 
-        # init_func=ini_plot, 
-        line_ani = animation.FuncAnimation(fig, updateLines, frames=len(trajs[0]), interval=(T/len(trajs[0])*1000), blit=False)
+        # 
+        line_ani = animation.FuncAnimation(fig, updateLines, init_func=ini_plot, frames=len(trajs[0]), interval=(T/len(trajs[0])*1000), blit=False)
         return line_ani
     
     

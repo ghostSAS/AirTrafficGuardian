@@ -47,18 +47,18 @@ corridor_info = {}
 corridor_info['end_points'] = corridor
 corridor_info['radius'] = corridor_r
 
-drone = Drone(start, target, corridor_info, T)
-drone.traj.set_degree_dim(degree, dim)
+drone = Drone(start, target, corridor_info, T, 0)
+drone.ctrlPt.set_degree_dim(degree, dim)
 
 ts = time.time()
-traj = drone.get_primary_traj()
+drone.get_primary_traj()
 print(f"QP takes {time.time()-ts:.4f} sec")
 
 planner = Planner()
 starts = [start]
 targets = [target]
 corridors = [corridor]
-trajs = [traj]
+trajs = [drone.traj_pt]
 
 view_angle=[-31, 34]
 planner.plot_final_frame(trajs, starts, targets, corridors, corridor_r, view_angle)

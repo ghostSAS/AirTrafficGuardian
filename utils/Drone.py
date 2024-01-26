@@ -6,7 +6,7 @@ import casadi as ca
 
 class Drone():
     
-    def __init__(self, start, target, corridor_info, T) -> None:
+    def __init__(self, start, target, corridor_info, T, priority) -> None:
         self.corridor = corridor_info['end_points']
         self.corridor_r = corridor_info['radius']
         # self.process_corridor(corridor_info)
@@ -14,7 +14,10 @@ class Drone():
         self.target = np.array(target)
         self.T = T
         self.optimized = False
-        self.traj = Bezier(7,len(start),T)
+        self.ctrlPt = Bezier(7,len(start),T)
+        self.num_pt = 51
+        self.traj_pt = np.empty((self.num_pt, len(start)))
+        self.priority = priority
         
     def process_corridor(self, corridor_info):
         self.corridor_axis = [np.nonzero(c[0,:]-c[1,:])[0] for c in self.corridor]
@@ -50,10 +53,10 @@ class Drone():
 
         
     def get_primary_traj(self):
-        traj = self.traj
+        traj = self.ctrlPt
         start = self.start
         target = self.target
-        dim = self.traj.d
+        dim = self.ctrlPt.d
         corridor_r = self.corridor_r
         
         corridor_sample, t_sample = self.get_samples()
@@ -107,9 +110,8 @@ class Drone():
         opti.solver("ipopt", opts)
         sol = opti.solve()
 
-        self.traj.set_P(sol.value(X))
-        # self.traj_pt = traj.evaluate_in_time(np.linspace(0,self.T,50))  
-        return traj.evaluate_in_time(np.linspace(0,self.T,50))  
+        self.ctrlPt.set_P(sol.value(X))
+        self.traj_pt = traj.evaluate_in_time(np.linspace(0,self.T,self.num_pt))  
 
 
 
