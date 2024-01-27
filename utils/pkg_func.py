@@ -15,3 +15,9 @@ def timer(func):
         print(f"{func.__name__} takes {end_time - start_time:.4f} seconds")
         return result
     return wrapper
+
+def combinations_of_2(l):
+    for i, j in zip(*np.triu_indices(len(l), 1)):
+        yield l[i], l[j]
+        
+

@@ -4,10 +4,11 @@ import casadi as ca
 
 
 class Planner():
-    def __init__(self) -> None:
+    def __init__(self, corridor_r) -> None:
         self.cm = plt.cm.colors.CSS4_COLORS
         self.colors = ['cyan', 'green', 'navy', 'black', 'tomato', 'red', 'darkkhaki']
         self.optimized = False
+        self.corridor_r = corridor_r
         
         
     def corridor_geo(self, corridor, radius, axis):
@@ -67,8 +68,6 @@ class Planner():
                 idx = np.where(dis<collide_r)[0]
                 print(idx)
 
-
-
         if spy:
             fig = plt.figure()
             ax = fig.add_subplot(111)
@@ -81,23 +80,48 @@ class Planner():
         return timer_map
     
 
-    def update_timer_map(self, timer_map):
-        # TODO: impliment using optimization
-        pt = [40, 12]
+    def update_timer_map(self, drones, timer_map, pt, update_traj = 1):
+        # TODO: 1. find critical time points using optimization
+        N = drones[0].num_pt
+        T = drones[0].T
+        pt = np.r_[pt, [[N,N]]]
+        time_dif = np.diff(pt,axis=0)
+        num_per_seg = np.max(time_dif, axis=1)
+        # num_per_seg = [50, 50]
+        trajs = []
+        # dilution
+        for j in range(2):
+            time_samples = np.empty((0,))
+            for i in range(len(pt)-1):
+                time_samples = np.r_[time_samples, np.linspace(pt[i,j], pt[i+1,j], num_per_seg[i])[:-1]*T/N]
+            
+            time_samples = np.r_[time_samples, T]
+            
+            trajs.append(drones[j].ctrlPt.evaluate_in_time(time_samples))
 
-
+        if update_traj:
+            for i in range(len(trajs)):
+                drones[i].traj_pt = trajs[i] 
+                
+        return trajs
+        
 
     
-    def plot_final_frame(self, trajs, starts, targets, corridors, corridor_r, view_angle):
+    def plot_final_frame(self, drones, corridors, view_angle, show_now=True):
+        
+        trajs = [d.traj_pt for d in drones]
+        targets = [d.target for d in drones]
+        starts = [d.start for d in drones]
+        corridor_r = self.corridor_r
+                
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
         cm, colors = self.cm, self.colors
-        l, s, t = [], [], []
         for i, (curve, start, target), in enumerate(zip(trajs, starts, targets,)):
-            l.append(ax.plot(curve[:,0], curve[:,1], curve[:,2], label=f"Drone {i+1}", c=cm[colors[i]]))
-            s.append(ax.scatter(start[0],start[1], start[2], c=cm[colors[i]], s=25, marker='o'))
-            t.append(ax.scatter(target[0],target[1], target[2], c=cm[colors[i]], s=25, marker='x'))
+            ax.plot(curve[:,0], curve[:,1], curve[:,2], label=f"Drone {i+1}", c=cm[colors[i]])
+            ax.scatter(start[0],start[1], start[2], c=cm[colors[i]], s=25, marker='o')
+            ax.scatter(target[0],target[1], target[2], c=cm[colors[i]], s=25, marker='x')
             
         for cors in corridors:
             cor_axes = [np.nonzero(c[0,:]-c[1,:])[0] for c in cors]
@@ -114,44 +138,52 @@ class Planner():
         set_axes_equal(ax)
         plt.tight_layout()
         
+        if show_now:
+            plt.show()
+        
         return fig, ax
 
     
     
-    def plot_animation(self, trajs, starts, targets, corridors, corridor_r, T, view_angle):
-        def updateLines(i):
-            for j, curve, in enumerate(trajs):
-                lines[j].set_data(curve[:i+1,0], curve[:i+1,1])
-                lines[j].set_3d_properties(curve[:i+1,2])
-                objs[j].set_data(curve[i:i+1,0], curve[i:i+1,1])
-                objs[j].set_3d_properties(curve[i:i+1,2])
-            titleTime.set_text(u"Time = {:.2f} s".format(t_all[i]))
-            return lines, objs
+    def plot_animation(self, drones, corridors, view_angle, show_now = 1):
+        if show_now:
+            def updateLines(i):
+                for j, curve, in enumerate(trajs):
+                    lines[j].set_data(curve[:i+1,0], curve[:i+1,1])
+                    lines[j].set_3d_properties(curve[:i+1,2])
+                    objs[j].set_data(curve[i:i+1,0], curve[i:i+1,1])
+                    objs[j].set_3d_properties(curve[i:i+1,2])
+                titleTime.set_text(u"Time = {:.2f} s".format(t_all[i]))
+                return lines, objs
 
-        def ini_plot():
-            for i in range(len(trajs)):
-                curve = trajs[i]
-                ax.plot(curve[:,0], curve[:,1], curve[:,2], c=cm[colors[i]], lw=1, linestyle = "--")
+            def ini_plot():
+                for i in range(len(trajs)):
+                    curve = trajs[i]
+                    ax.plot(curve[:,0], curve[:,1], curve[:,2], c=cm[colors[i]], lw=1, linestyle = "--")
 
-            for i in range(len(lines)):
-                lines[i].set_data(np.empty([1]), np.empty([1]))
-                lines[i].set_3d_properties(np.empty([1]))
-                objs[i].set_data(np.empty([1]), np.empty([1]))
-                objs[i].set_3d_properties(np.empty([1]))
+                for i in range(len(lines)):
+                    lines[i].set_data(np.empty([1]), np.empty([1]))
+                    lines[i].set_3d_properties(np.empty([1]))
+                    objs[i].set_data(np.empty([1]), np.empty([1]))
+                    objs[i].set_3d_properties(np.empty([1]))
 
-        fig, ax = self.plot_final_frame(trajs, starts, targets, corridors, corridor_r, view_angle)
-        [ax.lines.pop(0) for _ in range(len(ax.lines))]
+            fig, ax = self.plot_final_frame(drones, corridors, view_angle, show_now=False)
+            trajs = [d.traj_pt for d in drones]
+            T = drones[0].T
+            [ax.lines.pop(0) for _ in range(len(ax.lines))]
 
-        cm, colors = self.cm, self.colors
-        
-        t_all = np.linspace(0,T,len(trajs[0]))
-        lines = [ax.plot([], [], [], lw=2, label=f"Drone {i+1}", color=cm[colors[i]])[0] for i in range(len(trajs))]
-        objs = [ax.plot([], [], [], c=cm[colors[i]], lw=5, marker='o',linestyle="")[0] for i in range(len(trajs))]
-        titleTime = ax.text2D(0.1, 0.95, "", transform=ax.transAxes)
-                
-        # 
-        line_ani = animation.FuncAnimation(fig, updateLines, init_func=ini_plot, frames=len(trajs[0]), interval=(T/len(trajs[0])*1000), blit=False)
-        return line_ani
+            cm, colors = self.cm, self.colors
+            
+            t_all = np.linspace(0,T,len(trajs[0]))
+            lines = [ax.plot([], [], [], lw=2, label=f"Drone {i+1}", color=cm[colors[i]])[0] for i in range(len(trajs))]
+            objs = [ax.plot([], [], [], c=cm[colors[i]], lw=5, marker='o',linestyle="")[0] for i in range(len(trajs))]
+            titleTime = ax.text2D(0.1, 0.95, "", transform=ax.transAxes)
+                    
+            line_ani = animation.FuncAnimation(fig, updateLines, init_func=ini_plot, frames=len(trajs[0]), interval=(T/len(trajs[0])*1000), blit=False)
+            line_ani.save('./archive/2dronesOpti2.gif', writer='PillowWriter', fps=len(trajs[0])/T)
+            
+            plt.show()
+            return line_ani
     
     
     
