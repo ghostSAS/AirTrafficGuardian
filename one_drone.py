@@ -1,5 +1,5 @@
 from utils.pkg_func import *
-from utils.Bezier import Bezier
+from utils.Trajectory import Bezier
 from utils.Drone import Drone
 from utils.Planner import Planner
 
@@ -32,13 +32,16 @@ target = np.array([5,5,5])
 corridor = [np.array([[1,1,1],[1,1,2.5]]),
             np.array([[2.5,2.5,3.5],[2.5,3.5,3.5]])]
 
+corridor = [np.linspace([1,1,1],[1,1,2.5],3),
+            np.linspace([2.5,2.5,3.5],[2.5,3.5,3.5], 3)]
+
 # start      = [0,0,0]
 # target    = [0,0,5]
 # corridor   = [np.array([[2,2,2],[2,2,3.5]])]
 
 corridor_r = 0.15  
 
-degree = 10
+order = 10
 dim = 3
 T = 4
 dt = .08
@@ -50,7 +53,7 @@ corridor_info['end_points'] = corridor
 corridor_info['radius'] = corridor_r
 
 drone = Drone(start, target, corridor_info, T, 0)
-drone.ctrlPt.set_degree_dim(degree, dim)
+drone.ctrlPt.set_degree_dim(order, dim)
 
 ts = time.time()
 drone.get_primary_traj()

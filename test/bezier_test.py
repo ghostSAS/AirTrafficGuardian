@@ -2,7 +2,7 @@ import sys
 sys.path.append('.')
 
 from utils.pkg_func import *
-from utils.Bezier import Bezier
+from utils.Trajectory import Bezier
 
 
 

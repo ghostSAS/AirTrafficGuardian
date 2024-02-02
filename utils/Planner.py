@@ -1,5 +1,5 @@
 from utils.pkg_func import *
-from utils.Bezier import Bezier
+from utils.Trajectory import Bezier
 import casadi as ca
 
 
@@ -10,34 +10,37 @@ class Planner():
         self.optimized = False
         self.corridor_r = corridor_r
         
+    def get_primary_traj(self, drone):
+        H = drone.traj.
         
-    def corridor_geo(self, corridor, radius, axis):
-        """
-        geometry of corridor, corridor aligns with the given axis
-        :param: axis (int)  
-            0: x axis
-            1: y axis
-            2: z axis
-        # TODO: finish function 
-        """
-        assert(axis in [0,1,2])
         
-        height = np.ptp(corridor[:,axis])
+    def corridor_geo(self, corridor, radius):
+        height = np.linalg.norm((corridor[0,:]-corridor[1,:]))
         center = np.mean(corridor, axis=0)
         phi = np.linspace(0, 2 * np.pi, 25)
-        z = np.linspace(-height/2, height/2, 2) + center[axis]
+        z = np.linspace(-height/2, height/2, 2)
 
         Z, PHI = np.meshgrid(z, phi)
-        X = radius * np.cos(PHI) + center[axis-2]
-        Y = radius * np.sin(PHI) + center[axis-1]
+        X = radius * np.cos(PHI)
+        Y = radius * np.sin(PHI)
         
-        if axis == 0:
-            return Z,X,Y
-        elif axis == 1:
-             return Y,Z,X
+        a = np.array([0,0,1])
+        b = (corridor[0,:]-corridor[1,:])/height
+        c = a@b     # cosine of angle
+        # s = np.linalg.norm(v)    # sine of angle
+        if np.abs(c-1)<1e-5 or np.abs(c+1)<1e-5:
+            return X+center[0], Y+center[1], Z+center[2]
         else:
-            return X,Y,Z
-        
+            v = np.cross(a,b)
+            vx = np.array([[0, -v[2], v[1]],
+                           [v[2], 0, -v[0]],
+                           [-v[1], v[0], 0]])
+            R = np.eye(3) + vx + vx@vx/(1+c)
+            
+            XYZ = np.c_[X.reshape(-1), Y.reshape(-1), Z.reshape(-1)].T
+            XYZ_rot = R@XYZ
+            return XYZ_rot[0].reshape(X.shape)+center[0], XYZ_rot[1].reshape(Y.shape)+center[1], XYZ_rot[2].reshape(Z.shape)+center[2]
+
         
     def drone_geo(self):
         """
@@ -126,7 +129,7 @@ class Planner():
         for cors in corridors:
             cor_axes = [np.nonzero(c[0,:]-c[1,:])[0] for c in cors]
             for (cor, cor_ax) in zip(cors, cor_axes):
-                X,Y,Z = self.corridor_geo(cor,corridor_r,cor_ax)
+                X,Y,Z = self.corridor_geo(cor,corridor_r)
                 ax.plot_surface(X,Y,Z, color=cm['darkkhaki'], alpha=.3)
 
         ax.set_xlabel('X')

@@ -1,5 +1,5 @@
 from utils.pkg_func import *
-from utils.Bezier import Bezier
+from utils.Trajectory import *
 import casadi as ca
 
 
@@ -113,10 +113,11 @@ class Drone():
         self.ctrlPt.set_P(sol.value(X))
         self.traj_pt = traj.evaluate_in_time(np.linspace(0,self.T,self.num_pt))  
 
-
-
         
+class Drone_traj(Drone):
+    def __init__(self, start, target, corridor_info, T, priority, degree) -> None:
+        super().__init__(start, target, corridor_info, T, priority)
         
-
+        self.traj = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T)
         
     

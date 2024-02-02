@@ -11,7 +11,7 @@ from __future__ import absolute_import
 from .pkg_func import *
 from .toolbox_bezier import *
 
-from .Bezier import *
+from .Trajectory import *
 from .Drone import *
 from .Planner import *
 

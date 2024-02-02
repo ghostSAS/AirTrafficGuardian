@@ -1,5 +1,5 @@
 from utils.pkg_func import *
-from utils.Bezier import Bezier
+from utils.Trajectory import Bezier
 from utils.Drone import Drone
 from utils.Planner import Planner
 

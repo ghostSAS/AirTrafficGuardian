@@ -34,7 +34,7 @@ def evaluate_bezier(P,lam):
     :type  lam: ndarray of dimension R(m,)
 
     :returns:
-        - B - ndarray matrix in R(d,M)
+        - B - ndarray matrix in R(M,d)
     """
     n, d = P.shape
     n -= 1
