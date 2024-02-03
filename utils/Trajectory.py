@@ -169,7 +169,7 @@ class Bezier:
     def evaluate_in_space(self, time):
         return self.evaluate_in_time(time, derivative=0)
     
-    def get_A(self, time, derivative=0):
+    def get_A_old(self, time, derivative=0):
         """
         at t \in time and derivative, find 
         Aeq@MP=beq  or Aun@MP<=bun 
@@ -204,7 +204,27 @@ class Bezier:
         
         return A
     
+ 
+    def get_A(self, conti_order):
+        Ap = np.zeros((self.d*(self.n+1),self.d*(self.n+1)))
+        Am = np.zeros_like(Ap)
+        for k in range(conti_order+1):
+            Mk = bzr.get_M(self.n,k,self.d,self.T)
+            Nm = np.c_[np.zeros((self.d, Mk.shape[0]-self.d)), np.eye(self.d)]
+            Np = np.c_[np.eye(self.d), np.zeros((self.d, Mk.shape[0]-self.d))]
+            # if not k:
+            #     Ap = Np@Mk.copy()
+            #     Am = Nm@Mk.copy()
+            # else:
+            #     Ap = np.r_[Ap, Np@Mk]
+            #     Am = np.r_[Am, Nm@Mk]
+            
+            Ap[np.arange(k*self.d,(k+1)*self.d),:] = Np@Mk
+            Am[np.arange(k*self.d,(k+1)*self.d),:] = Nm@Mk            
+
+        return Ap, Am   # weird order, due to its final implementation
     
+   
     def get_idx_constr(self, time):
         """
         get the index of constraints
@@ -266,6 +286,7 @@ class Trajectory():
         self.constraints = {}
         self.set_waypoints(start, target, corridor)
         self.constraints['conti_order'] = conti_order  # Continuity in first kmax derivatives
+        self.constraints['CC'] = np.empty(((self.n+1)*self.d,(self.m)))*np.nan
         self.constraints['CC'][:(conti_order+1)*self.d,:] = np.zeros(((conti_order+1)*self.d,self.m))
 
         self.constraints['useFEP'] = 1      # Use fixed-end-point constraints
@@ -275,20 +296,23 @@ class Trajectory():
         
 
     def set_waypoints(self, start, target, corridor):
-        self.constraints['P0'] = np.empty(((self.n+1)*self.d,(self.m)))
-        self.constraints['PT'] = np.empty(((self.n+1)*self.d,(self.m)))
-        self.constraints['CC'] = np.empty(((self.n+1)*self.d,(self.m)))
+        self.constraints['P0'] = np.empty(((self.n+1)*self.d,(self.m)))*np.nan
+        self.constraints['PT'] = np.empty(((self.n+1)*self.d,(self.m)))*np.nan
         
         # set beginning point for each segment
-        self.constraints['P0'][:self.d,0] = start
+        self.constraints['P0'][:self.d,0] = start        
         i = 1
         for cor in corridor:
-            self.constraints['P0'][:self.d , i:i+len(cor)] = cor
+            self.constraints['P0'][:self.d , i:i+len(cor)] = cor.T
             i += len(cor)
             
         # set ending point for the last segment (set to target)
         self.constraints['PT'][:self.d,-1] = target
-
+        
+        # start and end at 0 velocity and accerlation
+        self.constraints['P0'][self.d:self.d*3,0] = np.zeros((2*self.d))
+        self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
+        
 
     def initial_spline(self, T):
         wp = np.c_[self.constraints['P0'][:self.d,:], self.constraints['PT'][:self.d,-1]]
@@ -346,7 +370,19 @@ class Trajectory():
         """
         return self.splines[id]
     
+        
+    def set_P(self, P : np.ndarray) -> None:       
+        P_mat = P.reshape((self.m,-1))
+        for i in range(self.m):
+            self.splines[i].set_P(P_mat[i])
+        
     
+    def set_degree_dim(self, degree, dim, idx_w=[4]):
+        self.d = dim
+        self.n = degree
+        for sp in self.splines:
+            sp.set_degree_dim(degree, dim, idx_w=idx_w)
+            
     def get_snap_cost(self):
         """
         Compute the Hessian matrix forming the quadratic L2-cost function associated
@@ -362,18 +398,22 @@ class Trajectory():
             Iv,Ix,Iy = self.get_indices(index)
 
             # Add the minimum-snap cost (if applicable)
-            H = spline.get_Q(spline.cost)
+            H = spline.get_Q(spline.weights)
             H_full[Ix,Iy] += H
             
         return H_full
-    
-    
+            
     def get_EPC(self):
         """
         end points constraints
+        Aeq = [[Aeq0]             ]
+              [       [Aeq1]      ]
+              [             ..    ]  
+              [             [Aeqm]]
+        beq follows the similar strcture
         """
-        n, m, d, P0, PT = self.n,  self.m, self.d, \
-                            self.constraints['P0'], self.constraints['PT']
+        n, m, d, P0, PT, conti_order = self.n,  self.m, self.d, \
+                            self.constraints['P0'], self.constraints['PT'], self.constraints['conti_order']
 
         # ----------- Construct the end point constraints --------------
         # At the initial point of each spline
@@ -392,7 +432,7 @@ class Trajectory():
             A_0_ep[Ix,Iy] = A0
             # Define constraints
             b_0_ep[I]   = P0[:,id]
-            b_T_ep[I]   = PT[:,id]
+            b_T_ep[I]   = PT[:,id]               
             
         # Remove all constraints that were not set
         A_0_ep = A_0_ep[~np.isnan(b_0_ep),:]
@@ -404,6 +444,76 @@ class Trajectory():
         b_ep = np.r_[b_0_ep, b_T_ep]
 
         return A_ep,b_ep
+    
+    def get_EPC(self):
+        """
+        end points constraints
+        Aeq = [[Aeq0]             ]
+              [       [Aeq1]      ]
+              [             ..    ]  
+              [             [Aeqm]]
+        beq follows the similar strcture
+        """
+        n, m, d, P0, PT, conti_order = self.n,  self.m, self.d, \
+                            self.constraints['P0'], self.constraints['PT'], self.constraints['conti_order']
+
+        # ----------- Construct the end point constraints --------------
+        # At the initial point of each spline
+        A_0_ep = np.zeros(((n+1)*m*d, (n+1)*m*d))
+        b_0_ep = np.zeros(((n+1)*m*d))*np.nan
+        # At the end-point of each spline
+        A_T_ep = np.zeros(((n+1)*m*d, (n+1)*m*d))
+        b_T_ep = np.zeros(((n+1)*m*d))*np.nan
+        
+        # At the initial point of each spline
+        A_0_unep = np.zeros(((n+1)*m*d, (n+1)*m*d))
+        b_0_unep = np.zeros(((n+1)*m*d))*np.nan
+        # At the end-point of each spline
+        A_T_unep = np.zeros(((n+1)*m*d, (n+1)*m*d))
+        b_T_unep = np.zeros(((n+1)*m*d))*np.nan
+        
+        for spline in self.splines:
+            id = spline.id
+            I,Ix,Iy = self.get_indices(id)
+            [A0, AT] = spline.get_A(self.n*0)
+            # only start and target points are equally constrained
+            if id == 0:
+                # Form constraint matrices
+                A_0_ep[Ix,Iy] = A0
+                # Define constraints
+                b_0_ep[I]   = P0[:,id]
+            elif id == m:
+                A_T_ep[Ix,Iy] = AT
+                b_T_ep[I]     = PT[:,id]
+                A_0_unep[Ix,Iy] = A0
+                b_0_unep[I]   = P0[:,id]
+                
+            # end points of tennels are bounded (unequally constrained)
+            else:
+                # Form constraint matrices
+                A_T_unep[Ix,Iy] = AT
+                A_0_unep[Ix,Iy] = A0
+                # Define constraints
+                b_0_unep[I]   = P0[:,id]
+                b_T_unep[I]   = PT[:,id]
+                
+        # Remove all constraints that were not set
+        A_0_ep = A_0_ep[~np.isnan(b_0_ep),:]
+        A_T_ep = A_T_ep[~np.isnan(b_T_ep),:]
+        b_0_ep = b_0_ep[~np.isnan(b_0_ep)]
+        b_T_ep = b_T_ep[~np.isnan(b_T_ep)]
+        
+        A_0_unep = A_0_unep[~np.isnan(b_0_unep),:]
+        A_T_unep = A_T_unep[~np.isnan(b_T_unep),:]
+        b_0_unep = b_0_unep[~np.isnan(b_0_unep)]
+        b_T_unep = b_T_unep[~np.isnan(b_T_unep)]
+        
+        A_ep = np.r_[A_0_ep, A_T_ep]
+        b_ep = np.r_[b_0_ep, b_T_ep]
+        Aun_ep = np.r_[A_0_unep, A_T_unep]
+        bun_ep = np.r_[b_0_unep, b_T_unep]
+
+        return A_ep,b_ep, Aun_ep, bun_ep
     
     
     def get_CC(self):   # continuous constraints
@@ -427,3 +537,41 @@ class Trajectory():
         b_con = b_con[~np.isnan(b_con)]
 
         return A_con,b_con
+        
+        
+    def evaluate_in_time(self, time, derivative, resolution=50):
+        """
+        Evaluate the trajectory at a given time, pututting the terminal point
+        if it is greater than the domain over which the trajectory is deifned
+        and the initial point if the time is smaller than the domain over which
+        the trajectory is defined.
+
+        :param time: Time at which the trajectory is to be evaluated
+        :type  time: float
+
+        :return: Array of dimension (d,1)
+        :rtype: Numpy array
+        """
+        T_cum = self.get_T_cum()        
+
+        id_s = np.where(T_cum<=time[0])[0][-1] if time[0]>0 else 0
+        id_e = np.where(T_cum>time[-1])[0][0]-1 if time[-1]<T_cum[-1] else len(T_cum)-1
+
+        # T_cum = self.get_T_cum(eval=True)        
+
+        # ensure the time duration for bezier is T \in [0,1]
+        # if self.spline_type == 'bezier':
+        #     T_cum = np.arange(self.m+1)
+            
+        values = np.zeros(((derivative+1)*self.d,(id_e-id_s)*resolution))
+        t_span = np.zeros((id_e-id_s)*resolution)
+
+        for id in range(-id_s+id_e):
+            spline = self.get_spline(id+id_s)
+            tt = np.linspace(0,spline.T,resolution)
+            for dd in range(derivative+1):
+                val = spline.evaluate_in_time(tt,dd).T
+                values[dd*self.d:(dd+1)*self.d , id*resolution:(id+1)*resolution] = val
+            t_span[id*resolution:(id+1)*resolution] = (tt + T_cum[id+id_s])
+
+        return values, t_span

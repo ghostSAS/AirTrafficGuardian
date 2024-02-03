@@ -11,19 +11,23 @@ class Planner():
         self.corridor_r = corridor_r
         
     def get_primary_traj(self, drone):
-        traj = drone.traj
-        H = traj.get_cost_decomposition()
-        Aeq  = np.zeros((0,(self.n+1)*self.d*self.m))
-        beq  = np.zeros(0)
-        Aneq = np.zeros((0,(self.n+1)*self.d*self.m))
-        bneq = np.zeros(0)
+        traj = drone.traj_bezier
+        corridor_r = self.corridor_r
         
+        H = traj.get_snap_cost()
+        Aeq  = np.zeros((0,(traj.n+1)*traj.d*traj.m))
+        beq  = np.zeros(0)
+        Auneq = np.zeros_like(Aeq) 
+        buneq = np.zeros_like(beq)
         if traj.constraints['useFEP']:
-            Aeq_ep, beq_ep, Aineq_ep, bineq_ep = traj.get_EPC()
+            # Aeq_ep, beq_ep = traj.get_EPC()
+            # Aeq  = np.r_[Aeq, Aeq_ep]
+            # beq  = np.r_[beq, beq_ep]
+            Aeq_ep, beq_ep, Aun_eq, bun_eq = traj.get_EPC()
             Aeq  = np.r_[Aeq, Aeq_ep]
             beq  = np.r_[beq, beq_ep]
-            Aneq = np.r_[Aneq, Aineq_ep]
-            bneq = np.r_[bneq, bineq_ep]
+            Auneq = np.r_[Auneq, Aun_eq]
+            buneq = np.r_[buneq, bun_eq]
         if traj.constraints['useCON']:
             A_con,b_con = traj.get_CC()
             Aeq = np.r_[Aeq, A_con]
@@ -31,34 +35,41 @@ class Planner():
             
         # ----------------- construct optimization solver ----------------
         opti = ca.Opti()
+        plt.spy(Aeq)
 
-        X = opti.variable(traj.d*(traj.n+1))
+        X = opti.variable(traj.d*(traj.n+1)*traj.m)
 
         # constraints 1 within corridor
-        opti.subject_to(A_eq@X==b_eq)
-        for i in range(len(corridor_sample)):
-            opti.subject_to(ca.norm_2(A_ineq[i*dim:(i+1)*dim]@X - corridor_sample[i]) <= corridor_r)
+        opti.subject_to(Aeq@X==beq)
+        
+        dis = (Auneq@X-buneq).reshape((-1, traj.d))
+        print(dis.shape)
+        for i in range(dis.shape[0]):
+            opti.subject_to(ca.norm_2(dis[i]) <= corridor_r)
 
             
         # constraints 2 == corridor sample
         # opti.subject_to(A_eq@X==b_eq)
         # opti.subject_to(A_ineq@X==corridor_sample.reshape((-1)))
 
-        opti.minimize(X.T@traj.get_Q(traj.weights)@X)
+        opti.minimize(X.T@H@X)
 
-        P_init = np.linspace(start, target, traj.n+1).reshape((-1,1))
-        opti.set_initial(X,P_init)
+        P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
+        opti.set_initial(X, P_init)
 
         opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
+        opts = {}
         opti.solver("ipopt", opts)
         sol = opti.solve()
 
-        self.ctrlPt.set_P(sol.value(X))
-        self.traj_pt = traj.evaluate_in_time(np.linspace(0,self.T,self.num_pt))  
+        traj.set_P(sol.value(X))
+        # traj.set_P(P_init.squeeze())
+        drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
+        drone.traj_pt = drone.traj_pt.T  
         
         
     def corridor_geo(self, corridor, radius):
-        height = np.linalg.norm((corridor[0,:]-corridor[1,:]))
+        height = np.linalg.norm((corridor[0,:]-corridor[-1,:]))
         center = np.mean(corridor, axis=0)
         phi = np.linspace(0, 2 * np.pi, 25)
         z = np.linspace(-height/2, height/2, 2)
@@ -68,7 +79,7 @@ class Planner():
         Y = radius * np.sin(PHI)
         
         a = np.array([0,0,1])
-        b = (corridor[0,:]-corridor[1,:])/height
+        b = (corridor[0,:]-corridor[-1,:])/height
         c = a@b     # cosine of angle
         # s = np.linalg.norm(v)    # sine of angle
         if np.abs(c-1)<1e-5 or np.abs(c+1)<1e-5:

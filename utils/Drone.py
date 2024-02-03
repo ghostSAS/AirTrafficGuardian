@@ -81,9 +81,9 @@ class Drone():
         # ---------------------------
         # corridor_sample = np.linspace(corridor[0], corridor[1], len(t_sample)-2)
 
-        A_eq = traj.get_A(np.array([0, self.T]))
+        A_eq = traj.get_A_old(np.array([0, self.T]))
         b_eq = np.r_[start, target]
-        A_ineq = traj.get_A(t_sample)
+        A_ineq = traj.get_A_old(t_sample)
         
 
         # ----------------- construct optimization solver ----------------
@@ -107,6 +107,7 @@ class Drone():
         opti.set_initial(X,P_init)
 
         opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
+        opts = {}
         opti.solver("ipopt", opts)
         sol = opti.solve()
 
@@ -115,9 +116,11 @@ class Drone():
 
         
 class Drone_traj(Drone):
-    def __init__(self, start, target, corridor_info, T, priority, degree) -> None:
+    def __init__(self, start, target, corridor_info, degree, T, priority) -> None:
         super().__init__(start, target, corridor_info, T, priority)
+        self.traj_pt = np.empty((self.num_pt, len(start)))
         
-        self.traj = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T)
+        self.traj_bezier = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T)
+        
         
     
