@@ -630,21 +630,17 @@ class Trajectory():
         # ensure the time duration for bezier is T \in [0,1]
         # if self.spline_type == 'bezier':
         #     T_cum = np.arange(self.m+1)       
-        
-        
-        resolution = [int(self.Ts[i]/self.T_total*resolution_total) for i in range(self.m)]
-        resolution_total = sum(resolution)
-        res_cum = np.cumsum(np.r_[0, resolution])
-        
-        values = np.zeros(((derivative+1)*self.d,resolution_total))
-        t_span = np.zeros(resolution_total)
-
-        for id in range(-id_s+id_e):
-            spline = self.get_spline(id+id_s)
-            tt = np.linspace(0,spline.T,resolution[id])
+        t_span = np.linspace(T_cum[id_s], T_cum[id_e], resolution_total)
+        values = np.zeros(((derivative+1)*self.d, resolution_total))
+        idx = 0
+        for id in range(id_s, id_e):
+            spline = self.get_spline(id)
+            valid_idx = t_span[idx:]<T_cum[id+1] if id!=id_e-1 else t_span[idx:]<=T_cum[id+1]+.1
+            N = sum(valid_idx)
+            tt = t_span[idx:][valid_idx] - T_cum[id]
             for dd in range(derivative+1):
                 val = spline.evaluate_in_time(tt,dd).T
-                values[dd*self.d:(dd+1)*self.d , res_cum[id]:res_cum[id+1]] = val
-            t_span[res_cum[id]:res_cum[id+1]] = (tt + T_cum[id+id_s])
-
+                values[dd*self.d:(dd+1)*self.d , idx:idx+N] = val
+            idx += N
+        
         return values, t_span

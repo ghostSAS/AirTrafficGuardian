@@ -105,7 +105,6 @@ traj_pt, t_span = drone.get_traj_pt(derivative=3)
 vis.visualize_splines_1D(traj_pt, len(start), t_span)
 # vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
 vis.plot_animation_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
-# plt.show()
 
 
 
