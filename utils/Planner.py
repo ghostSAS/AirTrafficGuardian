@@ -11,6 +11,8 @@ class Planner():
         self.corridor_r = corridor_r
         
     def get_primary_traj(self, drone):
+        uneq_con = False
+
         traj = drone.traj_bezier
         corridor_r = self.corridor_r
         
@@ -20,14 +22,16 @@ class Planner():
         Auneq = np.zeros_like(Aeq) 
         buneq = np.zeros_like(beq)
         if traj.constraints['useFEP']:
-            # Aeq_ep, beq_ep = traj.get_EPC()
-            # Aeq  = np.r_[Aeq, Aeq_ep]
-            # beq  = np.r_[beq, beq_ep]
-            Aeq_ep, beq_ep, Aun_eq, bun_eq = traj.get_EPC()
-            Aeq  = np.r_[Aeq, Aeq_ep]
-            beq  = np.r_[beq, beq_ep]
-            Auneq = np.r_[Auneq, Aun_eq]
-            buneq = np.r_[buneq, bun_eq]
+            if not uneq_con:
+                Aeq_ep, beq_ep = traj.get_EPC()
+                Aeq  = np.r_[Aeq, Aeq_ep]
+                beq  = np.r_[beq, beq_ep]
+            else:
+                Aeq_ep, beq_ep, Aun_eq, bun_eq = traj.get_EPC_uneq()
+                Aeq  = np.r_[Aeq, Aeq_ep]
+                beq  = np.r_[beq, beq_ep]
+                Auneq = np.r_[Auneq, Aun_eq]
+                buneq = np.r_[buneq, bun_eq]
         if traj.constraints['useCON']:
             A_con,b_con = traj.get_CC()
             Aeq = np.r_[Aeq, A_con]
@@ -35,27 +39,29 @@ class Planner():
             
         # ----------------- construct optimization solver ----------------
         opti = ca.Opti()
-        plt.spy(Aeq)
 
         X = opti.variable(traj.d*(traj.n+1)*traj.m)
+        Tspan = opti.variable(traj.m)
 
-        # constraints 1 within corridor
-        opti.subject_to(Aeq@X==beq)
-        
-        dis = (Auneq@X-buneq).reshape((-1, traj.d))
-        print(dis.shape)
-        for i in range(dis.shape[0]):
-            opti.subject_to(ca.norm_2(dis[i]) <= corridor_r)
+        # opti.minimize(X.T@H@X)
+        # opti.subject_to(Aeq@X == beq)
 
-            
-        # constraints 2 == corridor sample
-        # opti.subject_to(A_eq@X==b_eq)
-        # opti.subject_to(A_ineq@X==corridor_sample.reshape((-1)))
+        opti.minimize(X.T@H@X + np.ones((1,traj.m))@Tspan)
+        opti.subject_to(Aeq@X == beq)
+        opti.subject_to(np.eye(traj.m)@Tspan >= np.ones((traj.m, 1))*.1)
+        opti.subject_to(np.ones((1,traj.m))@Tspan >= traj.T/2)
 
-        opti.minimize(X.T@H@X)
+        if uneq_con:
+            dis = (Auneq@X-buneq).reshape((-1, traj.d))
+            for i in range(dis.shape[0]):
+                opti.subject_to(ca.norm_2(dis[i, :]) <= corridor_r)
 
         P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
+        T_init = [sp.T for sp in traj.splines]
+
         opti.set_initial(X, P_init)
+        opti.set_initial(Tspan, T_init)
+
 
         opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
         opts = {}
@@ -63,7 +69,6 @@ class Planner():
         sol = opti.solve()
 
         traj.set_P(sol.value(X))
-        # traj.set_P(P_init.squeeze())
         drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
         drone.traj_pt = drone.traj_pt.T  
         

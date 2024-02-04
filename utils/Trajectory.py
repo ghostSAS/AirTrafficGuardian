@@ -224,6 +224,26 @@ class Bezier:
 
         return Ap, Am   # weird order, due to its final implementation
     
+
+    def get_A(self, conti_order, T):
+        Ap = np.zeros((self.d*(self.n+1),self.d*(self.n+1)))
+        Am = np.zeros_like(Ap)
+        for k in range(conti_order+1):
+            Mk = bzr.get_M(self.n,k,self.d,T)
+            Nm = np.c_[np.zeros((self.d, Mk.shape[0]-self.d)), np.eye(self.d)]
+            Np = np.c_[np.eye(self.d), np.zeros((self.d, Mk.shape[0]-self.d))]
+            # if not k:
+            #     Ap = Np@Mk.copy()
+            #     Am = Nm@Mk.copy()
+            # else:
+            #     Ap = np.r_[Ap, Np@Mk]
+            #     Am = np.r_[Am, Nm@Mk]
+            
+            Ap[np.arange(k*self.d,(k+1)*self.d),:] = Np@Mk
+            Am[np.arange(k*self.d,(k+1)*self.d),:] = Nm@Mk            
+
+        return Ap, Am   # weird order, due to its final implementation
+    
    
     def get_idx_constr(self, time):
         """
@@ -310,8 +330,8 @@ class Trajectory():
         self.constraints['PT'][:self.d,-1] = target
         
         # start and end at 0 velocity and accerlation
-        self.constraints['P0'][self.d:self.d*3,0] = np.zeros((2*self.d))
-        self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
+        # self.constraints['P0'][self.d:self.d*3,0] = np.zeros((2*self.d))
+        # self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
         
 
     def initial_spline(self, T):
@@ -445,7 +465,7 @@ class Trajectory():
 
         return A_ep,b_ep
     
-    def get_EPC(self):
+    def get_EPC_uneq(self):
         """
         end points constraints
         Aeq = [[Aeq0]             ]
@@ -482,10 +502,10 @@ class Trajectory():
                 A_0_ep[Ix,Iy] = A0
                 # Define constraints
                 b_0_ep[I]   = P0[:,id]
-            elif id == m:
+            elif id == m-1:
                 A_T_ep[Ix,Iy] = AT
-                b_T_ep[I]     = PT[:,id]
                 A_0_unep[Ix,Iy] = A0
+                b_T_ep[I]     = PT[:,id]
                 b_0_unep[I]   = P0[:,id]
                 
             # end points of tennels are bounded (unequally constrained)
