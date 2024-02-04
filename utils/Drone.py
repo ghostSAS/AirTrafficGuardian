@@ -16,7 +16,7 @@ class Drone():
         self.optimized = False
         self.ctrlPt = Bezier(7,len(start),T)
         self.num_pt = 51
-        self.traj_pt = np.empty((self.num_pt, len(start)))
+        self.pos_pt = np.empty((self.num_pt, len(start)))
         self.priority = priority
         
     def process_corridor(self, corridor_info):
@@ -112,16 +112,32 @@ class Drone():
         sol = opti.solve()
 
         self.ctrlPt.set_P(sol.value(X))
-        self.traj_pt = traj.evaluate_in_time(np.linspace(0,self.T,self.num_pt))  
+        self.pos_pt = traj.evaluate_in_time(np.linspace(0,self.T,self.num_pt))  
 
         
 class Drone_traj(Drone):
     def __init__(self, start, target, corridor_info, degree, T, priority, idx_w) -> None:
         super().__init__(start, target, corridor_info, T, priority)
-        self.traj_pt = np.empty((self.num_pt, len(start)))
+        self.pos_pt = np.empty((self.num_pt, len(start)))
         
         self.traj_bezier = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T, idx_w=idx_w)
-        # self.traj_bezier.set_degree_dim(degree, len(start), idx_w=[4])
+        self.T_total = self.traj_bezier.T_total
+        
+    def set_Ts(self, T):
+        assert len(T) == self.traj_bezier.m
+        self.traj_bezier.set_Ts(T)
+        # self.T = sum(T)
+        
+    def get_traj_pt(self, derivative=0, resolution=300):
+        traj_pt, t_span = self.traj_bezier.evaluate_in_time_uniformT([0, self.T_total], derivative=derivative, resolution_total=resolution)
+        traj_pt, t_span = self.traj_bezier.evaluate_in_time([0, self.T_total], derivative=derivative, resolution=resolution)
+        # needs traj_pt to be tall matrix
+        if traj_pt.shape[0] < traj_pt.shape[1]:
+            traj_pt = traj_pt.T
+        self.pos_pt = traj_pt[:, :len(self.start)]
+        return traj_pt, t_span
+
+
         
         
     

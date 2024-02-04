@@ -68,7 +68,7 @@ for i in range(num_drones):
     
     drone = Drone(start, target, corridor_info, T, priority=i)
     drone.get_primary_traj()
-    prim_trajs.append(drone.traj_pt)
+    prim_trajs.append(drone.pos_pt)
     drones.append(drone)
     
 """

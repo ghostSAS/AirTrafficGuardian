@@ -2,6 +2,7 @@ from utils.pkg_func import *
 from utils.Trajectory import *
 from utils.Drone import *
 from utils.Planner import Planner
+import utils.toolbox_visualize as vis
 
 import casadi as ca
 
@@ -74,18 +75,16 @@ T = 6
 # -------------------------------- new methods with multiple segements -----------------
 
 drone = Drone_traj(start, target, corridor_info, order, T, priority=0, idx_w=optimal_ord_idx)
-drone.traj_bezier
+
 planner = Planner(corridor_r)
 
 # get the primary trajectory results
 T_orig = [sp.T for sp in drone.traj_bezier.splines]
-ts = time.time()
 optiT = True
 if optiT:
     planner.get_primary_traj_optiT(drone, kT=kT)
 else:
     planner.get_primary_traj(drone)
-print(f"QP takes {time.time()-ts:.4f} sec")
 
 # compare time for each segments
 T_now = [sp.T for sp in drone.traj_bezier.splines]
@@ -99,10 +98,14 @@ targets = [target]
 corridors = [corridor]
 drones = [drone]
 
-view_angle=[-31, 34]
-# planner.plot_final_frame(drones, corridors, view_angle, verbose={'show':True, 'save':False})
 
-planner.plot_animation(drones, corridors, view_angle, verbose={'show':True, 'save':False})
+view_angle=[-31, 34]
+
+traj_pt, t_span = drone.get_traj_pt(derivative=3)
+vis.visualize_splines_1D(traj_pt, len(start), t_span)
+# vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
+vis.plot_animation_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
+# plt.show()
 
 
 

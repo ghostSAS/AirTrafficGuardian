@@ -301,11 +301,11 @@ class Trajectory():
                |    |  ..  |]
     Bi.P = [p0x p0y p0z | p1x p1y p1z | .. | pnx pny pnz ].T
     """
-    def __init__(self, degree, dim, start, target, corridor, T, conti_order=4, idx_w=[4]) -> None:
+    def __init__(self, degree, dim, start, target, corridor, T_total, conti_order=4, idx_w=[4]) -> None:
         self.n = degree
         self.d = dim
         self.m = sum([len(cor) for cor in corridor])+1
-        self.T = T 
+        self.T_total = T_total 
         
         self.constraints = {}
         self.set_waypoints(start, target, corridor)
@@ -316,7 +316,7 @@ class Trajectory():
         self.constraints['useFEP'] = 1      # Use fixed-end-point constraints
         self.constraints['useCON'] = 1      # Use continuity constraints
 
-        self.initial_spline(T, idx_w)
+        self.initial_spline(T_total, idx_w)
         
 
     def set_waypoints(self, start, target, corridor):
@@ -338,20 +338,26 @@ class Trajectory():
         self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
         
 
-    def initial_spline(self, T, idx_w):
+    def initial_spline(self, T_total, idx_w):
         wp = np.c_[self.constraints['P0'][:self.d,:], self.constraints['PT'][:self.d,-1]]
         wp_dis = np.linalg.norm(np.diff(wp, axis=1), axis=0)
         total_dis = sum(wp_dis)
         
-        self.splines = [Bezier(self.n, self.d, T=wp_dis[id]/total_dis*T, id=id, idx_w=idx_w) for id in range(self.m)]
+        self.splines = [None]*self.m
+        self.Ts      = [None]*self.m
+        for id in range(self.m):
+            t = wp_dis[id]/total_dis*T_total
+            self.splines[id] = Bezier(self.n, self.d, t, id=id, idx_w=idx_w)
+            self.Ts[id] = t
         
         
-    def set_T(self, T):
+    def set_Ts(self, T):
         for idx, spline in enumerate(self.splines):
             spline.set_T(T[idx])
+        self.T_total = sum(T)
             
 
-    def get_T_ind(self):
+    def get_Ts(self):
         """
         Compute the domain of the trajectory as extracted from the splines
 
@@ -369,7 +375,7 @@ class Trajectory():
         :rtype: list of floats
 
         """
-        return np.r_[0,np.cumsum(self.get_T_ind())]
+        return np.r_[0,np.cumsum(self.get_Ts())]
         
     def get_indices(self, id):
         I = id*(self.n+1)*self.d + np.arange(self.d*(self.n+1))
@@ -597,5 +603,48 @@ class Trajectory():
                 val = spline.evaluate_in_time(tt,dd).T
                 values[dd*self.d:(dd+1)*self.d , id*resolution:(id+1)*resolution] = val
             t_span[id*resolution:(id+1)*resolution] = (tt + T_cum[id+id_s])
+
+        return values, t_span
+    
+    
+    def evaluate_in_time_uniformT(self, time, derivative, resolution_total=300):
+        """
+        Evaluate the trajectory at a given time, pututting the terminal point
+        if it is greater than the domain over which the trajectory is deifned
+        and the initial point if the time is smaller than the domain over which
+        the trajectory is defined.
+
+        :param time: Time at which the trajectory is to be evaluated
+        :type  time: float
+
+        :return: Array of dimension (d,1)
+        :rtype: Numpy array
+        """
+        T_cum = self.get_T_cum()        
+
+        id_s = np.where(T_cum<=time[0])[0][-1] if time[0]>0 else 0
+        id_e = np.where(T_cum>time[-1])[0][0]-1 if time[-1]<T_cum[-1] else len(T_cum)-1
+
+        # T_cum = self.get_T_cum(eval=True)        
+
+        # ensure the time duration for bezier is T \in [0,1]
+        # if self.spline_type == 'bezier':
+        #     T_cum = np.arange(self.m+1)       
+        
+        
+        resolution = [int(self.Ts[i]/self.T_total*resolution_total) for i in range(self.m)]
+        resolution_total = sum(resolution)
+        res_cum = np.cumsum(np.r_[0, resolution])
+        
+        values = np.zeros(((derivative+1)*self.d,resolution_total))
+        t_span = np.zeros(resolution_total)
+
+        for id in range(-id_s+id_e):
+            spline = self.get_spline(id+id_s)
+            tt = np.linspace(0,spline.T,resolution[id])
+            for dd in range(derivative+1):
+                val = spline.evaluate_in_time(tt,dd).T
+                values[dd*self.d:(dd+1)*self.d , res_cum[id]:res_cum[id+1]] = val
+            t_span[res_cum[id]:res_cum[id+1]] = (tt + T_cum[id+id_s])
 
         return values, t_span
