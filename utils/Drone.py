@@ -116,11 +116,12 @@ class Drone():
 
         
 class Drone_traj(Drone):
-    def __init__(self, start, target, corridor_info, degree, T, priority) -> None:
+    def __init__(self, start, target, corridor_info, degree, T, priority, idx_w) -> None:
         super().__init__(start, target, corridor_info, T, priority)
         self.traj_pt = np.empty((self.num_pt, len(start)))
         
-        self.traj_bezier = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T)
+        self.traj_bezier = Trajectory(degree, len(start), start, target, corridor_info['end_points'], T, idx_w=idx_w)
+        # self.traj_bezier.set_degree_dim(degree, len(start), idx_w=[4])
         
         
     

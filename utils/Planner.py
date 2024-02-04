@@ -1,5 +1,6 @@
 from utils.pkg_func import *
 from utils.Trajectory import Bezier
+import utils.toolbox_casdi as caF
 import casadi as ca
 
 
@@ -15,41 +16,42 @@ class Planner():
 
         traj = drone.traj_bezier
         corridor_r = self.corridor_r
+
+        opti = ca.Opti()
+        X = opti.variable(traj.d*(traj.n+1)*traj.m)
+        Tspan = opti.variable(traj.m)
+        Tspan = [sp.T for sp in traj.splines]
         
-        H = traj.get_snap_cost()
+        H_full = traj.get_snap_cost()
         Aeq  = np.zeros((0,(traj.n+1)*traj.d*traj.m))
         beq  = np.zeros(0)
         Auneq = np.zeros_like(Aeq) 
         buneq = np.zeros_like(beq)
         if traj.constraints['useFEP']:
             if not uneq_con:
-                Aeq_ep, beq_ep = traj.get_EPC()
+                Aeq_ep, beq_ep = traj.get_EPC(Tspan)
                 Aeq  = np.r_[Aeq, Aeq_ep]
                 beq  = np.r_[beq, beq_ep]
             else:
-                Aeq_ep, beq_ep, Aun_eq, bun_eq = traj.get_EPC_uneq()
+                Aeq_ep, beq_ep, Aun_eq, bun_eq = traj.get_EPC_uneq(Tspan)
                 Aeq  = np.r_[Aeq, Aeq_ep]
                 beq  = np.r_[beq, beq_ep]
                 Auneq = np.r_[Auneq, Aun_eq]
                 buneq = np.r_[buneq, bun_eq]
         if traj.constraints['useCON']:
-            A_con,b_con = traj.get_CC()
+            A_con,b_con = traj.get_CC(Tspan)
             Aeq = np.r_[Aeq, A_con]
             beq = np.r_[beq, b_con]
             
         # ----------------- construct optimization solver ----------------
-        opti = ca.Opti()
 
-        X = opti.variable(traj.d*(traj.n+1)*traj.m)
-        Tspan = opti.variable(traj.m)
-
-        # opti.minimize(X.T@H@X)
-        # opti.subject_to(Aeq@X == beq)
-
-        opti.minimize(X.T@H@X + np.ones((1,traj.m))@Tspan)
+        opti.minimize(X.T@H_full@X)
         opti.subject_to(Aeq@X == beq)
-        opti.subject_to(np.eye(traj.m)@Tspan >= np.ones((traj.m, 1))*.1)
-        opti.subject_to(np.ones((1,traj.m))@Tspan >= traj.T/2)
+
+        # opti.minimize(X.T@H_full@X + np.ones((1,traj.m))@Tspan)
+        # opti.subject_to(Aeq@X == beq)
+        # opti.subject_to(np.eye(traj.m)@Tspan >= np.ones((traj.m, 1))*.1)
+        # opti.subject_to(np.ones((1,traj.m))@Tspan >= traj.T/2)
 
         if uneq_con:
             dis = (Auneq@X-buneq).reshape((-1, traj.d))
@@ -69,8 +71,55 @@ class Planner():
         sol = opti.solve()
 
         traj.set_P(sol.value(X))
+        print(sol.value(X)[[13, 23, 6]])
         drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
         drone.traj_pt = drone.traj_pt.T  
+
+
+    def get_primary_traj_optiT(self, drone, kT):
+        traj = drone.traj_bezier
+        corridor_r = self.corridor_r
+
+        opti = ca.Opti()
+        X = opti.variable(traj.d*(traj.n+1)*traj.m)
+        Tspan = opti.variable(traj.m)
+        
+        H_full = caF.get_snap_cost(traj)
+        if traj.constraints['useFEP']:
+            Aeq_ep, beq_ep = caF.get_EPC(traj, Tspan)
+        if traj.constraints['useCON']:
+            A_con, b_con = caF.get_CC(traj, Tspan)
+            Aeq = ca.vcat([Aeq_ep, A_con])
+            beq = ca.vcat([beq_ep, b_con])
+            
+        # ----------------- construct optimization solver ----------------
+
+        # opti.minimize(X.T@H_full@X)
+        # opti.subject_to(Aeq@X == beq)
+
+        T_init = np.array([sp.T for sp in traj.splines])
+        T_init = np.ones((traj.m, 1))
+        opti.minimize(X.T@H_full@X + kT*np.ones((1,traj.m))@Tspan)
+        opti.subject_to(Aeq@X == beq)
+        opti.subject_to(np.eye(traj.m)@Tspan >= np.ones((traj.m,1))*.2)
+        # opti.subject_to(np.ones((1,traj.m))@Tspan >= traj.T/3)
+
+        P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
+
+        opti.set_initial(X, P_init)
+        opti.set_initial(Tspan, T_init)
+
+
+        opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
+        opts = {}
+        opti.solver("ipopt", opts)
+        sol = opti.solve()
+
+        traj.set_P(sol.value(X))
+        traj.set_T(sol.value(Tspan))
+        drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
+        drone.traj_pt = drone.traj_pt.T  
+
         
         
     def corridor_geo(self, corridor, radius):
@@ -169,7 +218,7 @@ class Planner():
         
 
     
-    def plot_final_frame(self, drones, corridors, view_angle, show_now=True):
+    def plot_final_frame(self, drones, corridors, view_angle, verbose):
         
         trajs = [d.traj_pt for d in drones]
         targets = [d.target for d in drones]
@@ -200,15 +249,15 @@ class Planner():
         set_axes_equal(ax)
         plt.tight_layout()
         
-        if show_now:
+        if verbose['show']:
             plt.show()
         
         return fig, ax
 
     
     
-    def plot_animation(self, drones, corridors, view_angle, show_now = 1):
-        if show_now:
+    def plot_animation(self, drones, corridors, view_angle, verbose):
+        if verbose:
             def updateLines(i):
                 for j, curve, in enumerate(trajs):
                     lines[j].set_data(curve[:i+1,0], curve[:i+1,1])
@@ -229,7 +278,7 @@ class Planner():
                     objs[i].set_data(np.empty([1]), np.empty([1]))
                     objs[i].set_3d_properties(np.empty([1]))
 
-            fig, ax = self.plot_final_frame(drones, corridors, view_angle, show_now=False)
+            fig, ax = self.plot_final_frame(drones, corridors, view_angle, verbose)
             trajs = [d.traj_pt for d in drones]
             T = drones[0].T
             [ax.lines.pop(0) for _ in range(len(ax.lines))]
@@ -242,9 +291,12 @@ class Planner():
             titleTime = ax.text2D(0.1, 0.95, "", transform=ax.transAxes)
                     
             line_ani = animation.FuncAnimation(fig, updateLines, init_func=ini_plot, frames=len(trajs[0]), interval=(T/len(trajs[0])*1000), blit=False)
-            line_ani.save('./archive/2dronesOpti2.gif', writer='PillowWriter', fps=len(trajs[0])/T)
             
-            plt.show()
+            if verbose['save']:
+                line_ani.save('./archive/2dronesOpti2.gif', writer='PillowWriter', fps=len(trajs[0])/T)
+            if verbose['show']:
+                plt.show()
+            
             return line_ani
     
     

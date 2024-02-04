@@ -109,6 +109,6 @@ plot trajectories
 view_angle=[-31, 34]
 
 # fig, ax = planner.plot_final_frame(drones, corridors, view_angle)
-ani = planner.plot_animation(drones, corridors, view_angle, show_now=1)
+ani = planner.plot_animation(drones, corridors, view_angle, verbose=1)
 
 

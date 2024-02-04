@@ -79,7 +79,7 @@ def eveluate_point_DeCas(self, t:float):
     return P_new[:d, -1]
     
     
-def get_M1(n, T):
+def get_M1(n):
     """
     Compute the linear map :math:`\mathbf{M}_n^1` relating the one dimensional bezier curve
     :math:`\mathbf{B}(tT^{-1}; \mathcal{P})` with its stderivative :math:`\mathbf{B}(tT^{-1}; \mathcal{P}^{(1)})`
@@ -93,7 +93,10 @@ def get_M1(n, T):
     :returns:
         - M - ndarray matrix in R(n,n+1)
     """
-    return  (n / T) * (np.c_[np.zeros((n,1)),np.eye(n)]-
+    # return  (n/T) * (np.c_[np.zeros((n,1)),np.eye(n)]-
+    #                    np.c_[np.eye(n),np.zeros((n,1))])
+
+    return  (n) * (np.c_[np.zeros((n,1)),np.eye(n)]-
                        np.c_[np.eye(n),np.zeros((n,1))])
 
 def get_M(n,k,d,T):
@@ -117,8 +120,8 @@ def get_M(n,k,d,T):
     """
     M1D = np.eye(n+1)
     for ii in range(k):
-        M1D = get_M1(n-ii,T)@M1D
-    return np.kron(M1D, np.eye(d))
+        M1D = get_M1(n-ii)@M1D
+    return np.kron(M1D, np.eye(d))/T**k
 
 
 

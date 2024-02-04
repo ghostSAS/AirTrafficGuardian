@@ -49,30 +49,33 @@ class SplineSegment():
     
 ############################ Bezier segment class #############################
 class Bezier:
-    def __init__(self, degree, dim, T, id=0) -> None:
+    def __init__(self, degree, dim, T, id=0, idx_w=[4]) -> None:
         """
         self.P = [p0x p0y p0z | p1x p1y p1z | .. ].T
+        idx_w:  0 --> position
+                1 --> velocity
+                2 --> accerlation
+                3 --> jerk
+                4 --> snap
         """
         assert(degree >= 3)
         
-        self.set_degree_dim(degree, dim)
+        self.set_degree_dim(degree, dim, idx_w=idx_w)
         self.T = T
         self.id = id
         
-    def set_degree_dim(self, degree, dim, idx_w=[4]):
+    def set_degree_dim(self, degree, dim, idx_w):
         self.n = degree
         self.d = dim
         self.P = np.zeros((self.d*(self.n+1),1))
-        self.idx_w = idx_w
-        self.set_weights(self.idx_w)
-        
+        self.set_weights(idx_w)
         
     def set_weights(self, idx_w):
         derivative_w = np.zeros(self.n+1)
         derivative_w[idx_w] = np.ones(len(idx_w))
         self.weights = derivative_w
-        
-        
+        self.idx_w = idx_w
+
     def set_P(self, P : np.ndarray) -> None:
         """ 
         vectorized control points
@@ -239,9 +242,10 @@ class Bezier:
             #     Ap = np.r_[Ap, Np@Mk]
             #     Am = np.r_[Am, Nm@Mk]
             
-            Ap[np.arange(k*self.d,(k+1)*self.d),:] = Np@Mk
-            Am[np.arange(k*self.d,(k+1)*self.d),:] = Nm@Mk            
-
+            # Ap[np.arange(k*self.d,(k+1)*self.d),:] = Np@Mk
+            # Am[np.arange(k*self.d,(k+1)*self.d),:] = Nm@Mk            
+            Ap[k*self.d:(k+1)*self.d,:] = Np@Mk
+            Am[k*self.d:(k+1)*self.d,:] = Nm@Mk   
         return Ap, Am   # weird order, due to its final implementation
     
    
@@ -297,7 +301,7 @@ class Trajectory():
                |    |  ..  |]
     Bi.P = [p0x p0y p0z | p1x p1y p1z | .. | pnx pny pnz ].T
     """
-    def __init__(self, degree, dim, start, target, corridor, T, conti_order=4) -> None:
+    def __init__(self, degree, dim, start, target, corridor, T, conti_order=4, idx_w=[4]) -> None:
         self.n = degree
         self.d = dim
         self.m = sum([len(cor) for cor in corridor])+1
@@ -312,7 +316,7 @@ class Trajectory():
         self.constraints['useFEP'] = 1      # Use fixed-end-point constraints
         self.constraints['useCON'] = 1      # Use continuity constraints
 
-        self.initial_spline(T)
+        self.initial_spline(T, idx_w)
         
 
     def set_waypoints(self, start, target, corridor):
@@ -330,16 +334,16 @@ class Trajectory():
         self.constraints['PT'][:self.d,-1] = target
         
         # start and end at 0 velocity and accerlation
-        # self.constraints['P0'][self.d:self.d*3,0] = np.zeros((2*self.d))
-        # self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
+        self.constraints['P0'][self.d:self.d*3,0] = np.zeros((2*self.d))
+        self.constraints['PT'][self.d:self.d*3,-1] = np.zeros((2*self.d))
         
 
-    def initial_spline(self, T):
+    def initial_spline(self, T, idx_w):
         wp = np.c_[self.constraints['P0'][:self.d,:], self.constraints['PT'][:self.d,-1]]
         wp_dis = np.linalg.norm(np.diff(wp, axis=1), axis=0)
         total_dis = sum(wp_dis)
         
-        self.splines = [Bezier(self.n, self.d, T=wp_dis[id]/total_dis*T, id=id) for id in range(self.m)]
+        self.splines = [Bezier(self.n, self.d, T=wp_dis[id]/total_dis*T, id=id, idx_w=idx_w) for id in range(self.m)]
         
         
     def set_T(self, T):
@@ -423,7 +427,7 @@ class Trajectory():
             
         return H_full
             
-    def get_EPC(self):
+    def get_EPC(self, Tspan):
         """
         end points constraints
         Aeq = [[Aeq0]             ]
@@ -446,7 +450,7 @@ class Trajectory():
         for spline in self.splines:
             id = spline.id
             I,Ix,Iy = self.get_indices(id)
-            [A0, AT] = spline.get_A(self.n)
+            [A0, AT] = spline.get_A(self.n, Tspan[id])
             # Form constraint matrices
             A_T_ep[Ix,Iy] = AT
             A_0_ep[Ix,Iy] = A0
@@ -465,7 +469,7 @@ class Trajectory():
 
         return A_ep,b_ep
     
-    def get_EPC_uneq(self):
+    def get_EPC_uneq(self, Tspan):
         """
         end points constraints
         Aeq = [[Aeq0]             ]
@@ -495,7 +499,7 @@ class Trajectory():
         for spline in self.splines:
             id = spline.id
             I,Ix,Iy = self.get_indices(id)
-            [A0, AT] = spline.get_A(self.n*0)
+            [A0, AT] = spline.get_A(self.n*0, Tspan[id])
             # only start and target points are equally constrained
             if id == 0:
                 # Form constraint matrices
@@ -536,7 +540,7 @@ class Trajectory():
         return A_ep,b_ep, Aun_ep, bun_ep
     
     
-    def get_CC(self):   # continuous constraints
+    def get_CC(self, Tspan):   # continuous constraints
         n, m, d, CC = self.n, self.m, self.d, self.constraints['CC']
         A_con = np.zeros(((n+1)*((m-1)*d), (n+1)*m*d))
         b_con = np.zeros((n+1)*((m-1)*d))
@@ -546,8 +550,8 @@ class Trajectory():
             Ip,Ipx,Ipy = self.get_indices(id+1)
 
             # manipulate the index for higher dimension
-            [_, AT] = self.get_spline(id).get_A(self.constraints['conti_order'])
-            [A0, _] = self.get_spline(id+1).get_A(self.constraints['conti_order'])
+            [_, AT] = self.get_spline(id).get_A(self.constraints['conti_order'], Tspan[id])
+            [A0, _] = self.get_spline(id+1).get_A(self.constraints['conti_order'], Tspan[id+1])
 
             A_con[Imx, Imy] = +AT
             A_con[Imx, Ipy] = -A0

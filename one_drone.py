@@ -27,32 +27,28 @@ bezier curve B:
 """
 
 # ---------------- configuration -------------
-start = np.array([0.1,0.1,0.1])
+start = np.array([0,0,0])
 target = np.array([5,5,5])
-# corridor = [np.array([[1,1,1],[1,1,2.5]]),
-#             np.array([[2.5,2.5,3.5],[2.5,3.5,3.5]])]
+
+
+corridor = [np.linspace([2.5,2.5,3.5],[2.5,3.5,3.5], 2)]
 
 corridor = [np.linspace([1,1,1],[1,1,2.5],3),
-            np.linspace([2.5,2.5,3.5],[2.5,3.5,3.5], 3)]
-
-
-# start      = [0,0,0]
-# target    = [0,0,5]
-# corridor   = [np.array([[2,2,2],[2,2,3.5]])]
+            np.linspace([2.5,2.5,3.5],[2.5,3.5,3.5],3)]
 
 corridor_r = 0.15  
-
-order = 6
-dim = 3
-T = 6
-dt = .08
-m = int(T/dt)+1
-
 
 corridor_info = {}
 corridor_info['end_points'] = corridor
 corridor_info['radius'] = corridor_r
 
+# ------------- parameters ---------------
+optimal_ord_idx = [3, 4]
+kT=70
+
+order = 5
+dim = 3
+T = 6
 
 
 # -------------------------------- old methods with single segements -----------------
@@ -77,13 +73,26 @@ corridor_info['radius'] = corridor_r
 
 # -------------------------------- new methods with multiple segements -----------------
 
-drone = Drone_traj(start, target, corridor_info, order, T, priority=0)
-drone.traj_bezier.set_degree_dim(order, dim, idx_w=[4])
+drone = Drone_traj(start, target, corridor_info, order, T, priority=0, idx_w=optimal_ord_idx)
+drone.traj_bezier
 planner = Planner(corridor_r)
 
+# get the primary trajectory results
+T_orig = [sp.T for sp in drone.traj_bezier.splines]
 ts = time.time()
-planner.get_primary_traj(drone)
+optiT = True
+if optiT:
+    planner.get_primary_traj_optiT(drone, kT=kT)
+else:
+    planner.get_primary_traj(drone)
 print(f"QP takes {time.time()-ts:.4f} sec")
+
+# compare time for each segments
+T_now = [sp.T for sp in drone.traj_bezier.splines]
+formatted_T_orig = ', '.join([f"{value:.2f}" for value in T_orig])
+formatted_now_values = ', '.join([f"{value:.2f}" for value in T_now])
+print(f"Original T: {formatted_T_orig}, total: {sum(T_orig):.2f} ")
+print(f"Now T: {formatted_now_values}, total: {sum(T_now):.2f} ")
 
 starts = [start]
 targets = [target]
@@ -91,7 +100,9 @@ corridors = [corridor]
 drones = [drone]
 
 view_angle=[-31, 34]
-planner.plot_final_frame(drones, corridors, view_angle)
+# planner.plot_final_frame(drones, corridors, view_angle, verbose={'show':True, 'save':False})
+
+planner.plot_animation(drones, corridors, view_angle, verbose={'show':True, 'save':False})
 
 
 
