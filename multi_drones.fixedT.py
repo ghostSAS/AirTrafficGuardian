@@ -6,14 +6,15 @@ import utils.toolbox_visualize as vis
 
 
 
-num_drones = 2
+num_drones = 3
 corridor_r = 0.15
-collision_r = corridor_r*3
+collision_r = corridor_r*2
 
 """
 task: fly towards each other
     drone 1 [0,0,0] --> [0,5,5]
     drone 2 [0,5,0] --> [0,0,5]
+    drone 3 [5,5,0] --> [5,5,5]
     corridor [2,2,2] --> [2,2,3.5], r=0.15
     
 goal:
@@ -21,13 +22,14 @@ goal:
     2. they shall not collide
     3. minimum snap
 """
-starts      = [[0,0,0], [0,5,0]]
-targets     = [[0,5,5], [0,0,5]]
+starts      = [[0,0,0], [0,5,0], [5,5,0]]
+targets     = [[0,5,5], [0,0,5], [5,5,5]]
 corridors   = [[np.linspace([2,2,2],[2,2,3.5],3)],  
-               [np.linspace([2,2,3.5],[2,2,2],3)]]
+               [np.linspace([2,2,3.5],[2,2,2],3)],
+               [np.linspace([2,2,2],[2,2,3.5],3)]]
 critical_time_pt = np.array([[0, 0],
-                    [42, 11],
-                   [51, 51]])
+                    [103, 49],
+                   [150, 150]])
 
 # """
 # task: fly along the same direction
@@ -52,7 +54,7 @@ critical_time_pt = np.array([[0, 0],
 # ------------- parameters ---------------
 optimal_ord_idx = [3, 4]
 kT=70
-optiT = True
+optiT = False
 
 order = 5
 dim = 3
@@ -92,7 +94,7 @@ for i in range(num_drones):
     print(f"Original T: {formatted_T_orig}, total: {sum(T_orig):.2f} ")
     print(f"Now T: {formatted_now_values}, total: {sum(T_now):.2f} ")
 
-    traj_pt, t_span = drone.get_traj_pt(derivative=2, resolution=150)
+    traj_pt, t_span = drone.get_traj_pt(derivative=2, resolution=50)
     prim_trajs.append(drone.pos_pt)
     drones.append(drone)
     vis.visualize_splines_1D(traj_pt, len(start), t_span)
@@ -105,8 +107,12 @@ vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':False
 """
 step2 
     find the colliding time points
-"""
-timer_map = planner.get_timer_map(prim_trajs, T, collision_r, idx = [0,1], method=0, spy=1)
+"""   
+perm = permutations(np.arange(num_drones), 2) 
+for idx in perm:
+    trajs = [prim_trajs[idx[0]], prim_trajs[idx[1]]]
+    timer_map = planner.get_timer_map(trajs, T, collision_r, idx=idx, method=0, spy=1)
+plt.show()
 
 
 # """
@@ -115,13 +121,13 @@ timer_map = planner.get_timer_map(prim_trajs, T, collision_r, idx = [0,1], metho
 # """
 # trajs = planner.update_timer_map(drones, timer_map, critical_time_pt, update_traj = 1)
 
-# timer_map = planner.get_timer_map(trajs, T, collision_r, method=0, spy=0)
 
 
 # """
 # step4
 #     validate no collision
 # """
+# timer_map = planner.get_timer_map(trajs, T, collision_r, method=0, spy=0)
 # for (i, j) in list(combinations_of_2(range(len(drones)))):
 #     dis = np.linalg.norm(trajs[i]-trajs[j], axis=1)
 #     collide_idx = np.where(dis<=collision_r)[0]

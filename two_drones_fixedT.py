@@ -106,7 +106,7 @@ vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':False
 step2 
     find the colliding time points
 """
-timer_map = planner.get_timer_map(prim_trajs, T, collision_r, method=0, spy=1)
+timer_map = planner.get_timer_map(prim_trajs, T, collision_r, idx = [0,1], method=0, spy=1)
 
 
 # """

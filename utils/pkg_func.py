@@ -8,6 +8,8 @@ from matplotlib import animation
 import mpl_toolkits.mplot3d.axes3d as p3
 
 import time
+from itertools import permutations 
+
 
 
 ############################ Helper functions ###################################

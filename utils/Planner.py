@@ -128,7 +128,7 @@ class Planner():
         
 
     @timer
-    def get_timer_map(self, trajs, T, collide_r, method=0, spy=1):
+    def get_timer_map(self, trajs, T, collide_r, idx=[0,1],  method=0, spy=1):
         N = len(trajs[0])
         t_span = np.linspace(0,T,N)
         timer_map = np.zeros((N,N))
@@ -150,11 +150,11 @@ class Planner():
             ax = fig.add_subplot(111)
             
             ax.spy(timer_map, origin='lower')
-            ax.set_xlabel('drone 1 time line')
-            ax.set_ylabel('drone 2 time line')
+            ax.set_xlabel(f'drone {idx[0]} time line')
+            ax.set_ylabel(f'drone {idx[1]} time line')
 
-            plt.show()
         return timer_map
+
     
 
     def update_timer_map(self, drones, timer_map, pt, update_traj = 1):
