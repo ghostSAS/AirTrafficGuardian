@@ -622,8 +622,8 @@ class Trajectory():
         """
         T_cum = self.get_T_cum()        
 
-        id_s = np.where(T_cum<=time[0])[0][-1] if time[0]>0 else 0
-        id_e = np.where(T_cum>time[-1])[0][0]-1 if time[-1]<T_cum[-1] else len(T_cum)-1
+        id_s = np.where(T_cum<=time[0])[0][-1] if time[0]>=0 else 0
+        id_e = np.where(T_cum>time[-1])[0][0]-1 if time[-1]<T_cum[-1]<=1e-3 else len(T_cum)-1
 
         # T_cum = self.get_T_cum(eval=True)        
 

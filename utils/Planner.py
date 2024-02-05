@@ -18,7 +18,6 @@ class Planner():
 
         opti = ca.Opti()
         X = opti.variable(traj.d*(traj.n+1)*traj.m)
-        Tspan = opti.variable(traj.m)
         Tspan = [sp.T for sp in traj.splines]
         
         H_full = traj.get_snap_cost()
@@ -57,21 +56,25 @@ class Planner():
             for i in range(dis.shape[0]):
                 opti.subject_to(ca.norm_2(dis[i, :]) <= corridor_r)
 
-        P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
-        T_init = [sp.T for sp in traj.splines]
+        critical_pts = np.c_[traj.constraints['P0'][:traj.d,:], traj.constraints['PT'][:traj.d,-1]]
+        P_init = np.zeros(0)
+        for i in range(critical_pts.shape[1]-1):
+            P_init = np.r_[P_init, np.linspace(critical_pts[:,i], critical_pts[:,i+1], traj.n+1).reshape((-1,))]
+        # P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
 
         opti.set_initial(X, P_init)
-        opti.set_initial(Tspan, T_init)
 
-
-        opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
         opts = {}
+        opts = {"ipopt.print_level":0, "print_time": False, 'ipopt.max_iter':100}
         opti.solver("ipopt", opts)
+        
+        ts = time.time()
         sol = opti.solve()
+        print(f"\n\nQP takes {time.time()-ts:.4f} sec")
 
         traj.set_P(sol.value(X))
-        drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
-        drone.traj_pt = drone.traj_pt.T  
+        # drone.traj_pt, t_span = traj.evaluate_in_time([0, traj.get_T_cum()[-1]], derivative=0)
+        # drone.traj_pt = drone.traj_pt.T  
 
 
     def get_primary_traj_optiT(self, drone, kT):
@@ -96,13 +99,16 @@ class Planner():
         # opti.subject_to(Aeq@X == beq)
 
         T_init = np.array([sp.T for sp in traj.splines])
-        T_init = np.ones((traj.m, 1))
         opti.minimize(X.T@H_full@X + kT*np.ones((1,traj.m))@Tspan)
         opti.subject_to(Aeq@X == beq)
         opti.subject_to(np.eye(traj.m)@Tspan >= np.ones((traj.m,1))*.2)
         # opti.subject_to(np.ones((1,traj.m))@Tspan >= traj.T/3)
 
-        P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
+        critical_pts = np.c_[traj.constraints['P0'][:traj.d,:], traj.constraints['PT'][:traj.d,-1]]
+        P_init = np.zeros(0)
+        for i in range(critical_pts.shape[1]-1):
+            P_init = np.r_[P_init, np.linspace(critical_pts[:,i], critical_pts[:,i+1], traj.n+1).reshape((-1,))]
+        # P_init = np.linspace(drone.start, drone.target, (traj.n+1)*traj.m).reshape((-1,1))
 
         opti.set_initial(X, P_init)
         opti.set_initial(Tspan, T_init)
@@ -114,36 +120,31 @@ class Planner():
         
         ts = time.time()
         sol = opti.solve()
-        print(f"QP takes {time.time()-ts:.4f} sec")
+        print(f"\n\nQP takes {time.time()-ts:.4f} sec")
         
 
         traj.set_P(sol.value(X))
         drone.set_Ts(sol.value(Tspan))
         
-        
-        
-    
+
     @timer
     def get_timer_map(self, trajs, T, collide_r, method=0, spy=1):
         N = len(trajs[0])
         t_span = np.linspace(0,T,N)
         timer_map = np.zeros((N,N))
         
-
         assert(len(trajs)==2)
         if method == 0:     # brute force 1: O(N^2)
             for i in range(N):
                 for j in range(N):
                     if np.linalg.norm(trajs[0][i]-trajs[1][j])<=collide_r:
                         timer_map[i,j] = 1
-
         elif method == 1:   # brute force 2: O(N), worst O(N^2)
             for offset in range(10):
                 
                 dis = np.linalg.norm(trajs[0]-trajs[1], axis=1)
                 idx = np.where(dis<collide_r)[0]
                 print(idx)
-
         if spy:
             fig = plt.figure()
             ax = fig.add_subplot(111)

@@ -128,7 +128,7 @@ class Drone_traj(Drone):
         self.traj_bezier.set_Ts(T)
         # self.T = sum(T)
         
-    def get_traj_pt(self, derivative=0, resolution=300):
+    def get_traj_pt(self, derivative=0, resolution=200):
         traj_pt, t_span = self.traj_bezier.evaluate_in_time_uniformT([0, self.T_total], derivative=derivative, resolution_total=resolution)
         # traj_pt, t_span = self.traj_bezier.evaluate_in_time([0, self.T_total], derivative=derivative, resolution=resolution)
         # needs traj_pt to be tall matrix

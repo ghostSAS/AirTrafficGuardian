@@ -46,6 +46,7 @@ corridor_info['radius'] = corridor_r
 # ------------- parameters ---------------
 optimal_ord_idx = [3, 4]
 kT=70
+optiT = True
 
 order = 5
 dim = 3
@@ -74,13 +75,13 @@ T = 6
 
 # -------------------------------- new methods with multiple segements -----------------
 
-drone = Drone_traj(start, target, corridor_info, order, T, priority=0, idx_w=optimal_ord_idx)
-
 planner = Planner(corridor_r)
+
+drone = Drone_traj(start, target, corridor_info, order, T, priority=0, idx_w=optimal_ord_idx)
 
 # get the primary trajectory results
 T_orig = [sp.T for sp in drone.traj_bezier.splines]
-optiT = True
+
 if optiT:
     planner.get_primary_traj_optiT(drone, kT=kT)
 else:
@@ -93,9 +94,9 @@ formatted_now_values = ', '.join([f"{value:.2f}" for value in T_now])
 print(f"Original T: {formatted_T_orig}, total: {sum(T_orig):.2f} ")
 print(f"Now T: {formatted_now_values}, total: {sum(T_now):.2f} ")
 
-starts = [start]
-targets = [target]
-corridors = [corridor]
+# starts = [start]
+# targets = [target]
+# corridors = [corridor]
 drones = [drone]
 
 
@@ -103,8 +104,8 @@ view_angle=[-31, 34]
 
 traj_pt, t_span = drone.get_traj_pt(derivative=3)
 vis.visualize_splines_1D(traj_pt, len(start), t_span)
-# vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
-vis.plot_animation_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
+vis.plot_final_frame_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
+# vis.plot_animation_3D(drones, corridor_info, view_angle, verbose={'show':True, 'save':False})
 
 
 
